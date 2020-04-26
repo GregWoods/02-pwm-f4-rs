@@ -11,16 +11,14 @@
 
 use panic_halt as _;
 
-use nb::block;
-
 use stm32f4xx_hal::{
     prelude::*,
+    pwm,
     stm32,
-    timer::Timer,
 };
 //use cortex_m_semihosting::hprintln;
 use cortex_m_rt::entry;
-use embedded_hal::digital::v2::OutputPin;
+
 
 #[entry]
 fn main() -> ! {
@@ -33,24 +31,38 @@ fn main() -> ! {
     // HAL structs
     let rcc = dp.RCC.constrain();
 
-    // Freeze the configuration of all the clocks in the system and store the frozen frequencies in
-    // `clocks`
+    // Freeze the configuration of all the clocks in the system and store the frozen frequencies in 'clocks'
     let clocks = rcc.cfgr.freeze();
 
-    // Acquire the GPIOC peripheral
-    let gpioc = dp.GPIOC.split();
+    // Acquire the GPIOA peripheral
+    let gpioa = dp.GPIOA.split();
 
-    // Configure gpio C pin 13 as a push-pull output. The `crh` register is passed to the function
-    // in order to configure the port. For pins 0-7, crl should be passed instead.
-    let mut led = gpioc.pc13.into_push_pull_output();
-    // Configure the syst timer to trigger an update every second
-    let mut timer = Timer::syst(cp.SYST, 1.hz(), clocks);
- 
-    // Wait for the timer to trigger an update and change the state of the LED
+    //from https://github.com/thalesfragoso/stm32f4xx-hal/blob/pwm-impl/examples/pwm.rs
+    //TODO: keep checking for the merge of this into 
+    let channels = (
+        gpioa.pa8.into_alternate_af1(),
+        gpioa.pa9.into_alternate_af1(),
+    );
+
+    //all channels share the same base frequency, but the duty cycle can be changed
+
+    //see: https://docs.rs/embedded-hal/0.2.1/embedded_hal/trait.Pwm.html
+
+    let pwm = pwm::tim1(dp.TIM1, channels, clocks, 1.khz());
+
+    //max_duty should be the same for all channela ???
+    //let max_duty = pwm.get_max_duty();  //not allowed. Intellisense seems to indicate only 2 channels on stm32f411 (I believe max 4 channels on stm32)
+
+    let (mut ch1, mut ch2) = pwm;
+
+    ch1.set_duty(ch1.get_max_duty() / 2);
+    ch1.enable();
+
+    ch2.set_duty(ch2.get_max_duty() / 8);
+    ch2.enable();    
+
+
     loop {
-        block!(timer.wait()).unwrap();
-        led.set_high().unwrap();
-        block!(timer.wait()).unwrap();
-        led.set_low().unwrap();
+        cortex_m::asm::nop();
     }
 }
